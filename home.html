@@ -123,20 +123,32 @@
         <script src="https://apis.google.com/js/api.js"></script>
         <script>
             const CLIENT_ID = '984214638210-3rf2rplrmgkttlqn32g55373ik85v2lr.apps.googleusercontent.com'; // Replace with your actual Client ID
+
             const SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/documents.readonly';
 
             let googleApiClientReady = false;
 
-            function handleClientLoad() {
-                gapi.load('client:auth2', initClient);
+            function initClient() {
+                google.accounts.id.initialize({
+                    client_id: CLIENT_ID,
+                    callback: handleAuthResult // We'll define this function
+                });
+                google.accounts.id.prompt(); // Optional: Automatically show the sign-in prompt
             }
 
-            async function initClient() {
-                await gapi.client.init({
-                    clientId: CLIENT_ID,
-                    scope: SCOPES,
-                });
-                googleApiClientReady = true;
+            function handleAuthResult(response) {
+                console.log("Authentication Response:", response);
+                if (response.credential) {
+                    // The user has signed in. We can now proceed to load the Sheets and Docs APIs.
+                    gapi.load('client', () => {
+                        gapi.client.setToken({ access_token: response.credential }); // This might need adjustment
+                        gapi.client.load('sheets', 'v4', () => console.log("Google Sheets API loaded"));
+                        gapi.client.load('docs', 'v1', () => console.log("Google Docs API loaded"));
+                        googleApiClientReady = true;
+                    });
+                } else {
+                    console.error("Authentication failed:", response);
+                }
             }
 
             function getSpreadsheetIdFromLink(link) {
@@ -231,60 +243,31 @@
 
                 if (ingredientsSource === 'manual-entry') {
                     ingredients = document.getElementById('manual-ingredients').value.split(/[\n,]+/).map(item => item.trim()).filter(item => item !== '');
-                    console.log("Manual Ingredients:", ingredients); // Added logging
+                    console.log("Manual Ingredients:", ingredients);
                     return ingredients;
                 } else if (ingredientsSource === 'file-upload') {
                     const fileInput = document.getElementById('ingredients-file');
                     if (fileInput.files.length > 0) {
                         const file = fileInput.files[0];
                         ingredients = await readFileContent(file);
-                        console.log("File Upload Ingredients:", ingredients); // Added logging
+                        console.log("File Upload Ingredients:", ingredients);
                         return ingredients;
                     } else {
                         alert("Please select a file to upload.");
                         return [];
                     }
                 } else if (ingredientsSource === 'google-sheet') {
-                    ingredients = await getIngredientsFromGoogleSheet();
-                    console.log("Google Sheet Ingredients:", ingredients); // Added logging
+                    ingredients = await fetchSheetData(getSpreadsheetIdFromLink(document.getElementById('google-sheet-link').value));
+                    console.log("Google Sheet Ingredients:", ingredients);
                     return ingredients;
                 } else if (ingredientsSource === 'google-docs') {
                     ingredients = await fetchDocContent(getDocumentIdFromLink(document.getElementById('google-docs-link').value));
-                    console.log("Google Docs Ingredients:", ingredients); // Added logging
+                    console.log("Google Docs Ingredients:", ingredients);
                     return ingredients;
                 }
                 return ingredients;
             }
 
-            // The rest of your JavaScript (validateIngredients, generateRecipe) remains largely the same
-            // Make sure the generateRecipe function calls getIngredients which now handles Google Sheets
-
-            function getIngredients() {
-                const ingredientsSource = document.querySelector('input[name="ingredients-source"]:checked').value;
-        
-                if (ingredientsSource === 'manual-entry') {
-                    return document.getElementById('manual-ingredients').value.split(/[\n,]+/).map(item => item.trim()).filter(item => item !== '');
-                } else if (ingredientsSource === 'file-upload') {
-                    const fileInput = document.getElementById('ingredients-file');
-                    if (fileInput.files.length > 0) {
-                        const file = fileInput.files[0];
-                        return readFileContent(file); // We'll define this function next
-                    } else {
-                        alert("Please select a file to upload.");
-                        return [];
-                    }
-                } else if (ingredientsSource === 'google-sheet') {
-                    const googleSheetLink = document.getElementById('google-sheet-link').value;
-                    if (googleSheetLink) {
-                        return fetchIngredientsFromGoogleSheet(googleSheetLink); // We'll define this later
-                    } else {
-                        alert("Please enter the Google Sheet link.");
-                        return [];
-                    }
-                }
-                return [];
-            }
-        
             async function readFileContent(file) {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
@@ -297,18 +280,18 @@
                     reader.readAsText(file);
                 });
             }
-        
+
             function validateIngredients(ingredients, taste1, taste2) {
                 const hasTasteProfile = taste1 !== "" || taste2 !== "";
                 const minimumIngredients = hasTasteProfile ? 5 : 4;
-        
+
                 if (ingredients.length < minimumIngredients) {
                     alert(`Please provide at least ${minimumIngredients} ingredients based on your taste profile selection.`);
                     return false;
                 }
                 return true;
             }
-        
+
             async function generateRecipe() {
                 const mealType = document.getElementById('meal-type').value;
                 const ingredients = await getIngredients();
@@ -370,14 +353,16 @@
                 `;
             }
 
-            // Call handleClientLoad when the script loads
-            handleClientLoad();
-        
-            // Placeholder function for fetching from Google Sheet - we'll implement this later
-            async function fetchIngredientsFromGoogleSheet(link) {
-                alert("Fetching ingredients from Google Sheet (Not implemented yet): " + link);
-                return [];
+            // Initialize the Google API client using the new method
+            function start() {
+                google.accounts.id.renderButton(
+                    document.getElementById("signInDiv"),
+                    { theme: "outline", size: "large" }  // customization attributes
+                );
+                google.accounts.id.prompt(); // Optional: Trigger the One Tap dialog
             }
+
+            handleClientLoad();
         </script>
 </body>
 </html>
