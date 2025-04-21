@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MineChef - Custom Recipe Generator</title>
+    <style>
+        /* Basic CSS for layout - we can expand this later */
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"],
+        select,
+        textarea,
+        input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #recipe-output {
+            margin-top: 20px;
+            border: 1px solid #eee;
+            padding: 15px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>MineChef - Custom Recipe Generator</h1>
+
+    <div class="input-group">
+        <label for="meal-type">Meal Type:</label>
+        <select id="meal-type" name="meal-type">
+            <option value="breakfast">Breakfast</option>
+            <option value="lunch">Lunch</option>
+            <option value="dinner">Dinner</option>
+            <option value="snack">Snack</option>
+            <option value="dessert">Dessert</option>
+            <option value="drink">Drink</option>
+        </select>
+    </div>
+
+    <div class="input-group">
+        <label>Ingredients:</label>
+        <div>
+            <input type="radio" id="ingredients-google-sheet" name="ingredients-source" value="google-sheet">
+            <label for="ingredients-google-sheet">Fetch from Google Sheet:</label>
+            <input type="text" id="google-sheet-link" placeholder="Enter Google Sheet Link">
+        </div>
+        <div>
+            <input type="radio" id="ingredients-google-docs" name="ingredients-source" value="google-docs">
+            <label for="ingredients-google-docs">Fetch from Google Docs:</label>
+            <input type="text" id="google-docs-link" placeholder="Enter Google Docs Link">
+        </div>
+        <div>
+            <input type="radio" id="ingredients-file-upload" name="ingredients-source" value="file-upload">
+            <label for="ingredients-file-upload">Upload Ingredients File (TXT format only):</label>
+            <input type="file" id="ingredients-file" accept=".txt">
+        </div>
+        <div>
+            <input type="radio" id="ingredients-manual-entry" name="ingredients-source" value="manual-entry" checked>
+            <label for="ingredients-manual-entry">Manual Entry:</label>
+            <textarea id="manual-ingredients" placeholder="Enter your ingredients here, separated by commas or new lines"></textarea>
+        </div>
+    </div>
+    </div>
+
+    <div class="input-group">
+        <label for="taste-profile">Taste Profile (Optional, select one or two):</label>
+        <select id="taste-profile-1" name="taste-profile-1">
+            <option value="">Select Taste 1</option>
+            <option value="savory">Savory</option>
+            <option value="sweet">Sweet</option>
+            <option value="salty">Salty</option>
+        </select>
+        <select id="taste-profile-2" name="taste-profile-2">
+            <option value="">Select Taste 2 (Optional)</option>
+            <option value="savory">Savory</option>
+            <option value="sweet">Sweet</option>
+            <option value="salty">Salty</option>
+        </select>
+    </div>
+
+    <div class="input-group">
+        <label for="preparation-pace">Pace of Meal Preparation:</label>
+        <select id="preparation-pace" name="preparation-pace">
+            <option value="super quick">Super Quick: For ultra-hurry meals (e.g., peanut butter toast, creamy cheese sandwich, bowl of sliced apples and fruits).</option>
+            <option value="quick">Quick: For recipes that are ultra-fast and get-you-out-the-door fast (e.g., smoothies, toast, overnight oats).</option>
+            <option value="casual">Casual: Moderate prep time, not rushed but not too involved (e.g., omelets, pancakes, wraps).</option>
+            <option value="involved">Involved: Ready to spend a bit more effort and time (e.g., shakshuka, frittata, breakfast burritos).</option>
+            <option value="got all day">Got All Day: You’ve got all morning and enjoy the process (e.g., baking, full breakfast spreads, artisanal meals).</option>
+        </select>
+    </div>
+
+    <div class="input-group">
+        <label for="additional-notes">Additional Notes (Optional):</label>
+        <textarea id="additional-notes" name="additional-notes" placeholder="e.g., Number of servings, calorie limit, allergies"></textarea>
+    </div>
+
+    <button onclick="generateRecipe()">Generate Recipe</button>
+
+    <div id="recipe-output">
+        </div>
+
+        <script src="https://apis.google.com/js/api.js"></script>
+        <script>
+            const CLIENT_ID = '984214638210-3rf2rplrmgkttlqn32g55373ik85v2lr.apps.googleusercontent.com'; // Replace with your actual Client ID
+            const SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/documents.readonly';
+
+            let googleApiClientReady = false;
+
+            function handleClientLoad() {
+                gapi.load('client:auth2', initClient);
+            }
+
+            async function initClient() {
+                await gapi.client.init({
+                    clientId: CLIENT_ID,
+                    scope: SCOPES,
+                });
+                googleApiClientReady = true;
+            }
+
+            function getSpreadsheetIdFromLink(link) {
+                const regex = /[?&]id=([^&]+)/;
+                const match = link.match(regex);
+                if (match && match[1]) {
+                    return match[1];
+                }
+                const parts = link.split('/');
+                const idIndex = parts.indexOf('d');
+                if (idIndex !== -1 && parts.length > idIndex + 1) {
+                    return parts[idIndex + 1];
+                }
+                return null;
+            }
+
+            async function fetchSheetData(spreadsheetId) {
+                if (!googleApiClientReady) {
+                    alert("Google API client is not yet ready. Please try again.");
+                    return [];
+                }
+
+                try {
+                    const response = await gapi.client.sheets.spreadsheets.values.get({
+                        spreadsheetId: spreadsheetId,
+                        range: 'A:Z',
+                    });
+                    const values = response.result.values;
+                    if (values && values.length > 0) {
+                        const allIngredients = values.flat().map(item => String(item).split(/[\n,]+/).map(i => i.trim()).filter(i => i !== '')).flat();
+                        return allIngredients;
+                    } else {
+                        alert("No data found in the specified Google Sheet.");
+                        return [];
+                    }
+                } catch (error) {
+                    console.error("Error fetching data from Google Sheet:", error);
+                    alert("Failed to fetch data from Google Sheet. Please ensure the link is correct and the sheet is publicly accessible or shared with you.");
+                    return [];
+                }
+            }
+
+            function getDocumentIdFromLink(link) {
+                const regex = /\/d\/([a-zA-Z0-9-_]+)\/(?:edit|view|copy|export)/;
+                const match = link.match(regex);
+                if (match && match[1]) {
+                    return match[1];
+                }
+                return null;
+            }
+
+            async function fetchDocContent(documentId) {
+                if (!googleApiClientReady) {
+                    alert("Google API client is not yet ready. Please try again.");
+                    return [];
+                }
+
+                try {
+                    const response = await gapi.client.docs.documents.get({
+                        documentId: documentId
+                    });
+                    const content = response.result.body.content;
+                    let ingredients = [];
+                    if (content) {
+                        content.forEach(element => {
+                            if (element.paragraph && element.paragraph.elements) {
+                                element.paragraph.elements.forEach(textElement => {
+                                    if (textElement.textRun && textElement.textRun.content) {
+                                        const lines = textElement.textRun.content.split(/[\n,]+/);
+                                        lines.forEach(line => {
+                                            const trimmedLine = line.trim();
+                                            if (trimmedLine !== '') {
+                                                ingredients.push(trimmedLine);
+                                            }
+                                        });
+                                    }
+                                });
+                            }
+                        });
+                    }
+                    return ingredients;
+                } catch (error) {
+                    console.error("Error fetching data from Google Docs:", error);
+                    alert("Failed to fetch data from Google Docs. Please ensure the link is correct and the document is publicly accessible or shared with you.");
+                    return [];
+                }
+            }
+
+            async function getIngredients() {
+                const ingredientsSource = document.querySelector('input[name="ingredients-source"]:checked').value;
+
+                if (ingredientsSource === 'manual-entry') {
+                    return document.getElementById('manual-ingredients').value.split(/[\n,]+/).map(item => item.trim()).filter(item => item !== '');
+                } else if (ingredientsSource === 'file-upload') {
+                    const fileInput = document.getElementById('ingredients-file');
+                    if (fileInput.files.length > 0) {
+                        const file = fileInput.files[0];
+                        return readFileContent(file);
+                    } else {
+                        alert("Please select a file to upload.");
+                        return [];
+                    }
+                } else if (ingredientsSource === 'google-sheet') {
+                    return getIngredientsFromGoogleSheet();
+                } else if (ingredientsSource === 'google-docs') {
+                    const googleDocsLink = document.getElementById('google-docs-link').value;
+                    if (googleDocsLink) {
+                        const documentId = getDocumentIdFromLink(googleDocsLink);
+                        if (documentId) {
+                            return fetchDocContent(documentId);
+                        } else {
+                            alert("Invalid Google Docs link.");
+                            return [];
+                        }
+                    } else {
+                        alert("Please enter the Google Docs link.");
+                        return [];
+                    }
+                }
+                return [];
+            }
+
+            // The rest of your JavaScript (validateIngredients, generateRecipe) remains largely the same
+            // Make sure the generateRecipe function calls getIngredients which now handles Google Sheets
+
+            function getIngredients() {
+                const ingredientsSource = document.querySelector('input[name="ingredients-source"]:checked').value;
+        
+                if (ingredientsSource === 'manual-entry') {
+                    return document.getElementById('manual-ingredients').value.split(/[\n,]+/).map(item => item.trim()).filter(item => item !== '');
+                } else if (ingredientsSource === 'file-upload') {
+                    const fileInput = document.getElementById('ingredients-file');
+                    if (fileInput.files.length > 0) {
+                        const file = fileInput.files[0];
+                        return readFileContent(file); // We'll define this function next
+                    } else {
+                        alert("Please select a file to upload.");
+                        return [];
+                    }
+                } else if (ingredientsSource === 'google-sheet') {
+                    const googleSheetLink = document.getElementById('google-sheet-link').value;
+                    if (googleSheetLink) {
+                        return fetchIngredientsFromGoogleSheet(googleSheetLink); // We'll define this later
+                    } else {
+                        alert("Please enter the Google Sheet link.");
+                        return [];
+                    }
+                }
+                return [];
+            }
+        
+            async function readFileContent(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        resolve(event.target.result.split(/[\n,]+/).map(item => item.trim()).filter(item => item !== ''));
+                    };
+                    reader.onerror = function(error) {
+                        reject(error);
+                    };
+                    reader.readAsText(file);
+                });
+            }
+        
+            function validateIngredients(ingredients, taste1, taste2) {
+                const hasTasteProfile = taste1 !== "" || taste2 !== "";
+                const minimumIngredients = hasTasteProfile ? 5 : 4;
+        
+                if (ingredients.length < minimumIngredients) {
+                    alert(`Please provide at least ${minimumIngredients} ingredients based on your taste profile selection.`);
+                    return false;
+                }
+                return true;
+            }
+        
+            async function generateRecipe() {
+                const mealType = document.getElementById('meal-type').value;
+                const ingredients = await getIngredients();
+                const taste1 = document.getElementById('taste-profile-1').value;
+                const taste2 = document.getElementById('taste-profile-2').value;
+                const preparationPace = document.getElementById('preparation-pace').value;
+                const additionalNotes = document.getElementById('additional-notes').value;
+
+                if (!validateIngredients(ingredients, taste1, taste2)) {
+                    return;
+                }
+
+                const data = {
+                    mealType: mealType,
+                    ingredients: ingredients,
+                    taste1: taste1,
+                    taste2: taste2,
+                    preparationPace: preparationPace,
+                    additionalNotes: additionalNotes,
+                };
+
+                try {
+                    const response = await fetch('/.netlify/functions/generate_recipe', { // Path to your Netlify function
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(data),
+                    });
+
+                    if (!response.ok) {
+                        const errorResult = await response.json();
+                        alert(`Failed to generate recipe: ${errorResult.error || response.statusText}`);
+                        return;
+                    }
+
+                    const recipeData = await response.json();
+                    displayRecipe(recipeData);
+
+                } catch (error) {
+                    console.error("Error sending data to Netlify function:", error);
+                    alert("Failed to generate recipe. Please try again.");
+                }
+            }
+
+            function displayRecipe(recipeData) {
+                const recipeOutputDiv = document.getElementById('recipe-output');
+                recipeOutputDiv.innerHTML = `
+                    <h2>Recipe:</h2>
+                    <h3>Ingredients Used:</h3>
+                    <ul>
+                        ${recipeData.ingredientsUsed.map(ingredient => `<li>${ingredient}</li>`).join('')}
+                    </ul>
+                    <h3>Preparation Instructions:</h3>
+                    <ol>
+                        ${recipeData.preparationInstructions.map(step => `<li>${step}</li>`).join('')}
+                    </ol>
+                    <p><strong>Approximate Nutritional Values:</strong> ${recipeData.approximateNutritionalValues}</p>
+                `;
+            }
+
+            // Call handleClientLoad when the script loads
+            handleClientLoad();
+        
+            // Placeholder function for fetching from Google Sheet - we'll implement this later
+            async function fetchIngredientsFromGoogleSheet(link) {
+                alert("Fetching ingredients from Google Sheet (Not implemented yet): " + link);
+                return [];
+            }
+        </script>
+</body>
+</html>
