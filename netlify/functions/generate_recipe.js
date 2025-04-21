@@ -1,8 +1,8 @@
-const { Configuration, OpenAIApi } = require("openai");
+const { OpenAI } = require("openai");
 
 exports.handler = async (event) => {
     try {
-        const apiKey = process.env.OPENAI_API_KEY; // Get API key from Netlify environment variables
+        const apiKey = process.env.OPENAI_API_KEY;
 
         if (!apiKey) {
             return {
@@ -11,14 +11,10 @@ exports.handler = async (event) => {
             };
         }
 
-        const configuration = new Configuration({
-            apiKey: apiKey,
-        });
-        const openai = new OpenAIApi(configuration);
+        const openai = new OpenAI({ apiKey }); // Instantiate OpenAI with the apiKey
 
         const { mealType, ingredients, taste1, taste2, preparationPace, additionalNotes } = JSON.parse(event.body);
 
-        // Construct the prompt for ChatGPT
         let prompt = `Generate a recipe for a ${mealType} using the following ingredients: ${ingredients.join(', ')}. `;
 
         if (taste1) {
@@ -36,18 +32,17 @@ exports.handler = async (event) => {
             prompt += `Additional notes: ${additionalNotes}.`;
         }
 
-        const completion = await openai.createChatCompletion({
-            model: "gpt-3.5-turbo", // You can choose other models
+        const completion = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
             messages: [{ role: "user", content: prompt }],
         });
 
-        const recipe = completion.data.choices[0].message.content;
+        const recipe = completion.choices[0].message.content;
 
-        // Basic structured recipe output
         const structuredRecipe = {
             ingredientsUsed: ingredients,
-            preparationInstructions: recipe.split('\n').filter(line => line.trim() !== ''), // Basic line splitting
-            approximateNutritionalValues: "Nutritional information not available in this response.", // ChatGPT often doesn't provide this reliably
+            preparationInstructions: recipe.split('\n').filter(line => line.trim() !== ''),
+            approximateNutritionalValues: "Nutritional information not available in this response.",
         };
 
         return {

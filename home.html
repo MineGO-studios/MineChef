@@ -227,36 +227,33 @@
 
             async function getIngredients() {
                 const ingredientsSource = document.querySelector('input[name="ingredients-source"]:checked').value;
+                let ingredients = [];
 
                 if (ingredientsSource === 'manual-entry') {
-                    return document.getElementById('manual-ingredients').value.split(/[\n,]+/).map(item => item.trim()).filter(item => item !== '');
+                    ingredients = document.getElementById('manual-ingredients').value.split(/[\n,]+/).map(item => item.trim()).filter(item => item !== '');
+                    console.log("Manual Ingredients:", ingredients); // Added logging
+                    return ingredients;
                 } else if (ingredientsSource === 'file-upload') {
                     const fileInput = document.getElementById('ingredients-file');
                     if (fileInput.files.length > 0) {
                         const file = fileInput.files[0];
-                        return readFileContent(file);
+                        ingredients = await readFileContent(file);
+                        console.log("File Upload Ingredients:", ingredients); // Added logging
+                        return ingredients;
                     } else {
                         alert("Please select a file to upload.");
                         return [];
                     }
                 } else if (ingredientsSource === 'google-sheet') {
-                    return getIngredientsFromGoogleSheet();
+                    ingredients = await getIngredientsFromGoogleSheet();
+                    console.log("Google Sheet Ingredients:", ingredients); // Added logging
+                    return ingredients;
                 } else if (ingredientsSource === 'google-docs') {
-                    const googleDocsLink = document.getElementById('google-docs-link').value;
-                    if (googleDocsLink) {
-                        const documentId = getDocumentIdFromLink(googleDocsLink);
-                        if (documentId) {
-                            return fetchDocContent(documentId);
-                        } else {
-                            alert("Invalid Google Docs link.");
-                            return [];
-                        }
-                    } else {
-                        alert("Please enter the Google Docs link.");
-                        return [];
-                    }
+                    ingredients = await fetchDocContent(getDocumentIdFromLink(document.getElementById('google-docs-link').value));
+                    console.log("Google Docs Ingredients:", ingredients); // Added logging
+                    return ingredients;
                 }
-                return [];
+                return ingredients;
             }
 
             // The rest of your JavaScript (validateIngredients, generateRecipe) remains largely the same
